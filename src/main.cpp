@@ -158,14 +158,29 @@ bool isDeleteModeEnabled() {
   return digitalRead(DELETE_MODE_SENSE_PIN) == LOW;
 }
 
+void smoothMoveServo(uint8_t target) {
+  const uint8_t current = doorServo.read();
+  const int8_t step = (target > current) ? 2 : -2;
+
+  for (int angle = current; angle != target; angle += step) {
+    if ((step > 0 && angle >= static_cast<int>(target)) ||
+        (step < 0 && angle <= static_cast<int>(target))) {
+      break;
+    }
+    doorServo.write(static_cast<uint8_t>(angle));
+    delay(10);
+  }
+  doorServo.write(target);
+}
+
 void lockDoor() {
-  doorServo.write(SERVO_CLOSED_ANGLE);
+  smoothMoveServo(SERVO_CLOSED_ANGLE);
   isDoorOpen = false;
   doorOpenedAtMs = 0;
 }
 
 void unlockDoor() {
-  doorServo.write(SERVO_OPEN_ANGLE);
+  smoothMoveServo(SERVO_OPEN_ANGLE);
   isDoorOpen = true;
   doorOpenedAtMs = millis();
 }
