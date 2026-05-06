@@ -15,7 +15,8 @@ constexpr uint8_t DELETE_MODE_SENSE_PIN = 3;
 
 constexpr uint8_t SERVO_CLOSED_ANGLE = 0;
 constexpr uint8_t SERVO_OPEN_ANGLE = 180;
-constexpr unsigned long DOOR_OPEN_DURATION_MS = 4000;
+constexpr uint8_t PULSE_DELTA = 10;
+constexpr unsigned long DOOR_OPEN_DURATION_MS = 3000;
 
 constexpr uint16_t EEPROM_MAGIC = 0x5243;
 constexpr uint8_t EEPROM_VERSION = 1;
@@ -186,11 +187,14 @@ void unlockDoor() {
 }
 
 void pulseServoReaction() {
-  doorServo.write(SERVO_OPEN_ANGLE);
-  delay(200);
-  doorServo.write(SERVO_CLOSED_ANGLE);
-  isDoorOpen = false;
-  doorOpenedAtMs = 0;
+  const uint8_t originalAngle = doorServo.read();
+  const uint8_t pulseTarget = (originalAngle + PULSE_DELTA <= 180)
+                                  ? originalAngle + PULSE_DELTA
+                                  : originalAngle - PULSE_DELTA;
+
+  smoothMoveServo(pulseTarget);
+  delay(50);
+  smoothMoveServo(originalAngle);
 }
 
 void handleDoorTimer() {
