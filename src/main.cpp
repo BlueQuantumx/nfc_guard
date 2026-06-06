@@ -23,6 +23,8 @@ constexpr uint8_t EEPROM_VERSION = 1;
 constexpr uint8_t MAX_STORED_CARDS = 20;
 constexpr uint8_t MAX_UID_BYTES = 10;
 
+constexpr unsigned long NFC_RESTART_INTERVAL_MS = 5UL * 60UL * 1000UL;
+
 struct CardRecord {
   uint8_t size;
   uint8_t uid[MAX_UID_BYTES];
@@ -42,6 +44,7 @@ CardRecord storedCardRecords[MAX_STORED_CARDS]{};
 
 bool isDoorOpen = false;
 unsigned long doorOpenedAtMs = 0;
+unsigned long lastNfcRestartMs = 0;
 
 void printUid(const MFRC522::Uid &uid) {
   for (byte i = 0; i < uid.size; ++i) {
@@ -204,6 +207,14 @@ void handleDoorTimer() {
   }
 }
 
+void handleNfcRestart() {
+  if (millis() - lastNfcRestartMs >= NFC_RESTART_INTERVAL_MS) {
+    mfrc522.PCD_Init();
+    lastNfcRestartMs = millis();
+    Serial.println(F("NFC module restarted"));
+  }
+}
+
 void processCard() {
   if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
     return;
@@ -258,6 +269,7 @@ void setup() {
 
   SPI.begin();
   mfrc522.PCD_Init();
+  lastNfcRestartMs = millis();
 
   loadStorage();
 
@@ -270,5 +282,6 @@ void setup() {
 
 void loop() {
   handleDoorTimer();
+  handleNfcRestart();
   processCard();
 }
