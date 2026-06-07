@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include <MFRC522.h>
-#include <Servo.h>
 #include <SPI.h>
+#include <Servo.h>
 
 namespace {
 
@@ -26,14 +26,14 @@ constexpr uint8_t MAX_UID_BYTES = 10;
 constexpr unsigned long NFC_RESTART_INTERVAL_MS = 2 * 1000UL;
 
 struct CardRecord {
-  uint8_t size;
-  uint8_t uid[MAX_UID_BYTES];
+    uint8_t size;
+    uint8_t uid[MAX_UID_BYTES];
 };
 
 struct CardStorageHeader {
-  uint16_t magic;
-  uint8_t version;
-  uint8_t count;
+    uint16_t magic;
+    uint8_t version;
+    uint8_t count;
 };
 
 MFRC522 mfrc522(RFID_SS_PIN, RFID_RST_PIN);
@@ -47,245 +47,250 @@ unsigned long doorOpenedAtMs = 0;
 unsigned long lastNfcRestartMs = 0;
 
 void printUid(const MFRC522::Uid &uid) {
-  for (byte i = 0; i < uid.size; ++i) {
-    if (uid.uidByte[i] < 0x10) {
-      Serial.print('0');
+    for (byte i = 0; i < uid.size; ++i) {
+        if (uid.uidByte[i] < 0x10) {
+            Serial.print('0');
+        }
+        Serial.print(uid.uidByte[i], HEX);
+        if (i + 1 < uid.size) {
+            Serial.print(':');
+        }
     }
-    Serial.print(uid.uidByte[i], HEX);
-    if (i + 1 < uid.size) {
-      Serial.print(':');
-    }
-  }
 }
 
 bool sameUid(const MFRC522::Uid &uid, const CardRecord &card) {
-  if (uid.size != card.size) {
-    return false;
-  }
-  for (byte i = 0; i < uid.size; ++i) {
-    if (uid.uidByte[i] != card.uid[i]) {
-      return false;
+    if (uid.size != card.size) {
+        return false;
     }
-  }
-  return true;
+    for (byte i = 0; i < uid.size; ++i) {
+        if (uid.uidByte[i] != card.uid[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void loadStorage() {
-  EEPROM.get(0, cardStorageHeader);
+    EEPROM.get(0, cardStorageHeader);
 
-  if (cardStorageHeader.magic != EEPROM_MAGIC || cardStorageHeader.version != EEPROM_VERSION || cardStorageHeader.count > MAX_STORED_CARDS) {
-    cardStorageHeader.magic = EEPROM_MAGIC;
-    cardStorageHeader.version = EEPROM_VERSION;
-    cardStorageHeader.count = 0;
-    EEPROM.put(0, cardStorageHeader);
+    if (cardStorageHeader.magic != EEPROM_MAGIC ||
+        cardStorageHeader.version != EEPROM_VERSION ||
+        cardStorageHeader.count > MAX_STORED_CARDS) {
+        cardStorageHeader.magic = EEPROM_MAGIC;
+        cardStorageHeader.version = EEPROM_VERSION;
+        cardStorageHeader.count = 0;
+        EEPROM.put(0, cardStorageHeader);
 
-    for (uint8_t i = 0; i < MAX_STORED_CARDS; ++i) {
-      storedCardRecords[i] = {};
+        for (uint8_t i = 0; i < MAX_STORED_CARDS; ++i) {
+            storedCardRecords[i] = {};
+        }
+        return;
     }
-    return;
-  }
 
-  const int baseAddress = static_cast<int>(sizeof(cardStorageHeader));
-  for (uint8_t i = 0; i < cardStorageHeader.count; ++i) {
-    EEPROM.get(baseAddress + static_cast<int>(i) * static_cast<int>(sizeof(CardRecord)), storedCardRecords[i]);
-  }
+    const int baseAddress = static_cast<int>(sizeof(cardStorageHeader));
+    for (uint8_t i = 0; i < cardStorageHeader.count; ++i) {
+        EEPROM.get(baseAddress + static_cast<int>(i) *
+                                     static_cast<int>(sizeof(CardRecord)),
+                   storedCardRecords[i]);
+    }
 
-  for (uint8_t i = cardStorageHeader.count; i < MAX_STORED_CARDS; ++i) {
-    storedCardRecords[i] = {};
-  }
+    for (uint8_t i = cardStorageHeader.count; i < MAX_STORED_CARDS; ++i) {
+        storedCardRecords[i] = {};
+    }
 }
 
 void saveStorage() {
-  EEPROM.put(0, cardStorageHeader);
+    EEPROM.put(0, cardStorageHeader);
 
-  const int baseAddress = static_cast<int>(sizeof(cardStorageHeader));
-  for (uint8_t i = 0; i < cardStorageHeader.count; ++i) {
-    EEPROM.put(baseAddress + static_cast<int>(i) * static_cast<int>(sizeof(CardRecord)), storedCardRecords[i]);
-  }
+    const int baseAddress = static_cast<int>(sizeof(cardStorageHeader));
+    for (uint8_t i = 0; i < cardStorageHeader.count; ++i) {
+        EEPROM.put(baseAddress + static_cast<int>(i) *
+                                     static_cast<int>(sizeof(CardRecord)),
+                   storedCardRecords[i]);
+    }
 }
 
 int findCardIndex(const MFRC522::Uid &uid) {
-  for (uint8_t i = 0; i < cardStorageHeader.count; ++i) {
-    if (sameUid(uid, storedCardRecords[i])) {
-      return static_cast<int>(i);
+    for (uint8_t i = 0; i < cardStorageHeader.count; ++i) {
+        if (sameUid(uid, storedCardRecords[i])) {
+            return static_cast<int>(i);
+        }
     }
-  }
-  return -1;
+    return -1;
 }
 
 bool addCard(const MFRC522::Uid &uid) {
-  if (uid.size == 0 || uid.size > MAX_UID_BYTES) {
-    return false;
-  }
+    if (uid.size == 0 || uid.size > MAX_UID_BYTES) {
+        return false;
+    }
 
-  if (findCardIndex(uid) >= 0) {
+    if (findCardIndex(uid) >= 0) {
+        return true;
+    }
+
+    if (cardStorageHeader.count >= MAX_STORED_CARDS) {
+        return false;
+    }
+
+    CardRecord &slot = storedCardRecords[cardStorageHeader.count];
+    slot = {};
+    slot.size = uid.size;
+    for (byte i = 0; i < uid.size; ++i) {
+        slot.uid[i] = uid.uidByte[i];
+    }
+
+    cardStorageHeader.count++;
+    saveStorage();
     return true;
-  }
-
-  if (cardStorageHeader.count >= MAX_STORED_CARDS) {
-    return false;
-  }
-
-  CardRecord &slot = storedCardRecords[cardStorageHeader.count];
-  slot = {};
-  slot.size = uid.size;
-  for (byte i = 0; i < uid.size; ++i) {
-    slot.uid[i] = uid.uidByte[i];
-  }
-
-  cardStorageHeader.count++;
-  saveStorage();
-  return true;
 }
 
 bool deleteCard(const MFRC522::Uid &uid) {
-  const int index = findCardIndex(uid);
-  if (index < 0) {
-    return false;
-  }
+    const int index = findCardIndex(uid);
+    if (index < 0) {
+        return false;
+    }
 
-  for (int i = index; i < static_cast<int>(cardStorageHeader.count) - 1; ++i) {
-    storedCardRecords[i] = storedCardRecords[i + 1];
-  }
+    for (int i = index; i < static_cast<int>(cardStorageHeader.count) - 1;
+         ++i) {
+        storedCardRecords[i] = storedCardRecords[i + 1];
+    }
 
-  storedCardRecords[cardStorageHeader.count - 1] = {};
-  cardStorageHeader.count--;
-  saveStorage();
-  return true;
+    storedCardRecords[cardStorageHeader.count - 1] = {};
+    cardStorageHeader.count--;
+    saveStorage();
+    return true;
 }
 
-bool isWriteModeEnabled() {
-  return digitalRead(WRITE_MODE_SENSE_PIN) == LOW;
-}
+bool isWriteModeEnabled() { return digitalRead(WRITE_MODE_SENSE_PIN) == LOW; }
 
-bool isDeleteModeEnabled() {
-  return digitalRead(DELETE_MODE_SENSE_PIN) == LOW;
-}
+bool isDeleteModeEnabled() { return digitalRead(DELETE_MODE_SENSE_PIN) == LOW; }
 
 void smoothMoveServo(uint8_t target) {
-  const uint8_t current = doorServo.read();
-  const int8_t step = (target > current) ? 2 : -2;
+    const uint8_t current = doorServo.read();
+    const int8_t step = (target > current) ? 2 : -2;
 
-  for (int angle = current; angle != target; angle += step) {
-    if ((step > 0 && angle >= static_cast<int>(target)) ||
-        (step < 0 && angle <= static_cast<int>(target))) {
-      break;
+    for (int angle = current; angle != target; angle += step) {
+        if ((step > 0 && angle >= static_cast<int>(target)) ||
+            (step < 0 && angle <= static_cast<int>(target))) {
+            break;
+        }
+        doorServo.write(static_cast<uint8_t>(angle));
+        delay(10);
     }
-    doorServo.write(static_cast<uint8_t>(angle));
-    delay(10);
-  }
-  doorServo.write(target);
+    doorServo.write(target);
 }
 
 void lockDoor() {
-  smoothMoveServo(SERVO_CLOSED_ANGLE);
-  isDoorOpen = false;
-  doorOpenedAtMs = 0;
+    smoothMoveServo(SERVO_CLOSED_ANGLE);
+    isDoorOpen = false;
+    doorOpenedAtMs = 0;
 }
 
 void unlockDoor() {
-  smoothMoveServo(SERVO_OPEN_ANGLE);
-  isDoorOpen = true;
-  doorOpenedAtMs = millis();
+    smoothMoveServo(SERVO_OPEN_ANGLE);
+    isDoorOpen = true;
+    doorOpenedAtMs = millis();
 }
 
 void pulseServoReaction() {
-  const uint8_t originalAngle = doorServo.read();
-  const uint8_t pulseTarget = (originalAngle + PULSE_DELTA <= 180)
-                                  ? originalAngle + PULSE_DELTA
-                                  : originalAngle - PULSE_DELTA;
+    const uint8_t originalAngle = doorServo.read();
+    const uint8_t pulseTarget = (originalAngle + PULSE_DELTA <= 180)
+                                    ? originalAngle + PULSE_DELTA
+                                    : originalAngle - PULSE_DELTA;
 
-  smoothMoveServo(pulseTarget);
-  delay(50);
-  smoothMoveServo(originalAngle);
+    smoothMoveServo(pulseTarget);
+    delay(50);
+    smoothMoveServo(originalAngle);
 }
 
 void handleDoorTimer() {
-  if (isDoorOpen && millis() - doorOpenedAtMs >= DOOR_OPEN_DURATION_MS) {
-    lockDoor();
-    Serial.println(F("Door locked"));
-  }
+    if (isDoorOpen && millis() - doorOpenedAtMs >= DOOR_OPEN_DURATION_MS) {
+        lockDoor();
+        Serial.println(F("Door locked"));
+    }
 }
 
-/// MFRC522 can occasionally get into a bad state where it stops responding to new cards until reset.
-/// Especially when cable connection is not very stable. To mitigate this, we periodically restart the MFRC522 module.
+/// MFRC522 can occasionally get into a bad state where it stops responding to
+/// new cards until reset. Especially when cable connection is not very stable.
+/// To mitigate this, we periodically restart the MFRC522 module.
 void handleNfcRestart() {
-  if (millis() - lastNfcRestartMs >= NFC_RESTART_INTERVAL_MS) {
-    SPI.end();
-    SPI.begin();
-    mfrc522.PCD_Init();
-    lastNfcRestartMs = millis();
-    Serial.println(F("NFC module restarted"));
-  }
+    if (millis() - lastNfcRestartMs >= NFC_RESTART_INTERVAL_MS) {
+        SPI.end();
+        SPI.begin();
+        mfrc522.PCD_Init();
+        lastNfcRestartMs = millis();
+        Serial.println(F("NFC module restarted"));
+    }
 }
 
 void processCard() {
-  if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
-    return;
-  }
-
-  Serial.print(F("Card UID: "));
-  printUid(mfrc522.uid);
-  Serial.println();
-
-  if (isWriteModeEnabled()) {
-    if (addCard(mfrc522.uid)) {
-      Serial.println(F("Card stored in EEPROM"));
-      pulseServoReaction();
-    } else {
-      Serial.println(F("Failed to store card (memory full or invalid UID)"));
+    if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
+        return;
     }
-  } else if (isDeleteModeEnabled()) {
-    if (deleteCard(mfrc522.uid)) {
-      Serial.println(F("Card deleted from EEPROM"));
-      pulseServoReaction();
-    } else {
-      Serial.println(F("Card not found"));
-    }
-  } else {
-    const int index = findCardIndex(mfrc522.uid);
-    if (index >= 0) {
-      Serial.print(F("Access granted, slot #"));
-      Serial.println(index + 1);
-      unlockDoor();
-    } else {
-      Serial.println(F("Access denied"));
-    }
-  }
 
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
-  delay(300);
+    Serial.print(F("Card UID: "));
+    printUid(mfrc522.uid);
+    Serial.println();
+
+    if (isWriteModeEnabled()) {
+        if (addCard(mfrc522.uid)) {
+            Serial.println(F("Card stored in EEPROM"));
+            pulseServoReaction();
+        } else {
+            Serial.println(
+                F("Failed to store card (memory full or invalid UID)"));
+        }
+    } else if (isDeleteModeEnabled()) {
+        if (deleteCard(mfrc522.uid)) {
+            Serial.println(F("Card deleted from EEPROM"));
+            pulseServoReaction();
+        } else {
+            Serial.println(F("Card not found"));
+        }
+    } else {
+        const int index = findCardIndex(mfrc522.uid);
+        if (index >= 0) {
+            Serial.print(F("Access granted, slot #"));
+            Serial.println(index + 1);
+            unlockDoor();
+        } else {
+            Serial.println(F("Access denied"));
+        }
+    }
+
+    mfrc522.PICC_HaltA();
+    mfrc522.PCD_StopCrypto1();
+    delay(300);
 }
 
-}  // namespace
+} // namespace
 
 void setup() {
-  Serial.begin(115200);
+    Serial.begin(115200);
 
-  pinMode(LOW_SOURCE_PIN, OUTPUT);
-  digitalWrite(LOW_SOURCE_PIN, LOW);
-  pinMode(WRITE_MODE_SENSE_PIN, INPUT_PULLUP);
-  pinMode(DELETE_MODE_SENSE_PIN, INPUT_PULLUP);
+    pinMode(LOW_SOURCE_PIN, OUTPUT);
+    digitalWrite(LOW_SOURCE_PIN, LOW);
+    pinMode(WRITE_MODE_SENSE_PIN, INPUT_PULLUP);
+    pinMode(DELETE_MODE_SENSE_PIN, INPUT_PULLUP);
 
-  doorServo.attach(DOOR_SERVO_PIN);
-  lockDoor();
+    doorServo.attach(DOOR_SERVO_PIN);
+    lockDoor();
 
-  SPI.begin();
-  mfrc522.PCD_Init();
-  lastNfcRestartMs = millis();
+    SPI.begin();
+    mfrc522.PCD_Init();
+    lastNfcRestartMs = millis();
 
-  loadStorage();
+    loadStorage();
 
-  Serial.println(F("NFC access controller ready"));
-  Serial.print(F("Stored cards: "));
-  Serial.println(cardStorageHeader.count);
-  Serial.println(F("Short PIN 4 and PIN 2 to enter write mode"));
-  Serial.println(F("Short PIN 4 and PIN 3 to enter delete mode"));
+    Serial.println(F("NFC access controller ready"));
+    Serial.print(F("Stored cards: "));
+    Serial.println(cardStorageHeader.count);
+    Serial.println(F("Short PIN 4 and PIN 2 to enter write mode"));
+    Serial.println(F("Short PIN 4 and PIN 3 to enter delete mode"));
 }
 
 void loop() {
-  handleDoorTimer();
-  handleNfcRestart();
-  processCard();
+    handleDoorTimer();
+    handleNfcRestart();
+    processCard();
 }
