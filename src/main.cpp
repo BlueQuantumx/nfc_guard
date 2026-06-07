@@ -23,7 +23,7 @@ constexpr uint8_t EEPROM_VERSION = 1;
 constexpr uint8_t MAX_STORED_CARDS = 20;
 constexpr uint8_t MAX_UID_BYTES = 10;
 
-constexpr unsigned long NFC_RESTART_INTERVAL_MS = 5UL * 60UL * 1000UL;
+constexpr unsigned long NFC_RESTART_INTERVAL_MS = 2 * 1000UL;
 
 struct CardRecord {
   uint8_t size;
@@ -207,8 +207,12 @@ void handleDoorTimer() {
   }
 }
 
+/// MFRC522 can occasionally get into a bad state where it stops responding to new cards until reset.
+/// Especially when cable connection is not very stable. To mitigate this, we periodically restart the MFRC522 module.
 void handleNfcRestart() {
   if (millis() - lastNfcRestartMs >= NFC_RESTART_INTERVAL_MS) {
+    SPI.end();
+    SPI.begin();
     mfrc522.PCD_Init();
     lastNfcRestartMs = millis();
     Serial.println(F("NFC module restarted"));
